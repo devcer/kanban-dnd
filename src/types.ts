@@ -26,8 +26,18 @@ export interface Dragging {
   location: DraggableLocation;
 }
 
+export interface Column {
+  id: Id;
+  title: string;
+  itemIds: Id[];
+}
+
 export interface QuoteMap {
-  [key: string]: Quote[];
+  items: Quote[];
+  columns: {
+    [key: string]: Column[];
+  };
+  columnOrder: string[];
 }
 
 export interface Task {

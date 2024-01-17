@@ -1,185 +1,157 @@
-import React, { Component, ReactElement } from "react";
-import styled from "@emotion/styled";
-import { colors } from "@atlaskit/theme";
-import { DragDropContext } from "@hello-pangea/dnd";
-import type { DropResult, DraggableLocation } from "@hello-pangea/dnd";
-import QuoteList from "./primatives/quote-list";
-import { grid } from "./constants";
-import { reorderQuoteMap } from "./reorder";
-import type { ReorderQuoteMapResult } from "./reorder";
-import type { QuoteMap } from "./types";
+import React from "react";
+import ReactDOM from "react-dom";
+import styled from "styled-components";
+import { DragDropContext, Droppable } from "@hello-pangea/dnd";
+import initialData from "./initial-data";
+import Column from "./column";
 
-const Root = styled.div`
-  background-color: ${colors.B200};
-  box-sizing: border-box;
-  padding: ${grid * 2}px;
-  min-height: 100vh;
-  overflow: hidden;
-
-  /* flexbox */
+const Container = styled.div`
   display: flex;
 `;
 
-const Column = styled.div`
-  margin: 0 ${grid * 2}px;
-`;
-
-const HorizontalScrollContainer = styled.div`
-  display: flex;
-  justify-content: flex-start;
-  align-items: flex-start;
-  background: rgb(0 0 0 / 10%);
-  padding: ${grid}px;
-  overflow-x: auto;
-  flex: 1;
-`;
-
-const VerticalScrollContainer = styled.div`
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-  align-items: flex-start;
-  background: rgb(0 0 0 / 10%);
-  padding: ${grid}px;
-  max-height: 800px;
-  overflow: auto;
-`;
-
-const PushDown = styled.div`
-  height: 200px;
-`;
-
-interface Props {
-  initial: QuoteMap;
+class InnerList extends React.PureComponent {
+  render() {
+    const { column, taskMap, index } = this.props;
+    const tasks = column.taskIds.map((taskId) => taskMap[taskId]);
+    return <Column column={column} tasks={tasks} index={index} />;
+  }
 }
 
-type State = ReorderQuoteMapResult;
+export class QuoteApp extends React.Component {
+  state = initialData;
 
-export default class QuoteApp extends Component<Props, State> {
-  /* eslint-disable react/sort-comp */
-
-  state: State = {
-    quoteMap: this.props.initial,
-  };
-
-  onDragEnd = (result: DropResult): void => {
-    // dropped nowhere
-    if (!result.destination) {
-      return;
-    }
-
-    const source: DraggableLocation = result.source;
-    const destination: DraggableLocation = result.destination;
-
-    this.setState(
-      reorderQuoteMap({
-        quoteMap: this.state.quoteMap,
-        source,
-        destination,
-      })
+  onDragStart = (start, provided) => {
+    provided.announce(
+      `You have lifted the task in position ${start.source.index + 1}`,
     );
   };
 
-  render(): ReactElement {
-    const { quoteMap } = this.state;
-    const disabledDroppable = "TODO" as string;
+  onDragUpdate = (update, provided) => {
+    const message = update.destination
+      ? `You have moved the task to position ${update.destination.index + 1}`
+      : `You are currently not over a droppable area`;
 
+    provided.announce(message);
+  };
+
+  onDragEnd = (result, provided) => {
+    const message = result.destination
+      ? `You have moved the task from position
+        ${result.source.index + 1} to ${result.destination.index + 1}`
+      : `The task has been returned to its starting position of
+        ${result.source.index + 1}`;
+
+    provided.announce(message);
+
+    const { destination, source, draggableId, type } = result;
+
+    if (!destination) {
+      return;
+    }
+
+    if (
+      destination.droppableId === source.droppableId &&
+      destination.index === source.index
+    ) {
+      return;
+    }
+
+    if (type === "column") {
+      const newColumnOrder = Array.from(this.state.columnOrder);
+      newColumnOrder.splice(source.index, 1);
+      newColumnOrder.splice(destination.index, 0, draggableId);
+
+      const newState = {
+        ...this.state,
+        columnOrder: newColumnOrder,
+      };
+      this.setState(newState);
+      return;
+    }
+
+    const home = this.state.columns[source.droppableId];
+    const foreign = this.state.columns[destination.droppableId];
+
+    if (home === foreign) {
+      const newTaskIds = Array.from(home.taskIds);
+      newTaskIds.splice(source.index, 1);
+      newTaskIds.splice(destination.index, 0, draggableId);
+
+      const newHome = {
+        ...home,
+        taskIds: newTaskIds,
+      };
+
+      const newState = {
+        ...this.state,
+        columns: {
+          ...this.state.columns,
+          [newHome.id]: newHome,
+        },
+      };
+
+      this.setState(newState);
+      return;
+    }
+
+    // moving from one list to another
+    const homeTaskIds = Array.from(home.taskIds);
+    homeTaskIds.splice(source.index, 1);
+    const newHome = {
+      ...home,
+      taskIds: homeTaskIds,
+    };
+
+    const foreignTaskIds = Array.from(foreign.taskIds);
+    foreignTaskIds.splice(destination.index, 0, draggableId);
+    const newForeign = {
+      ...foreign,
+      taskIds: foreignTaskIds,
+    };
+
+    const newState = {
+      ...this.state,
+      columns: {
+        ...this.state.columns,
+        [newHome.id]: newHome,
+        [newForeign.id]: newForeign,
+      },
+    };
+    this.setState(newState);
+  };
+
+  render() {
     return (
-      <DragDropContext onDragEnd={this.onDragEnd}>
-        <Root>
-          <Column>
-            <QuoteList
-              title="kappa"
-              listId="kappa"
-              listType="card"
-              isDropDisabled={disabledDroppable === "kappa"}
-              quotes={quoteMap.kappa}
-            />
-          </Column>
-          <HorizontalScrollContainer>
-            <Column>
-              <QuoteList
-                title="alpha"
-                listId="alpha"
-                listType="card"
-                isDropDisabled={disabledDroppable === "alpha"}
-                quotes={quoteMap.alpha}
-              />
-            </Column>
-            <Column>
-              <QuoteList
-                title="beta"
-                listId="beta"
-                listType="card"
-                isDropDisabled={disabledDroppable === "beta"}
-                quotes={quoteMap.beta}
-              />
-            </Column>
-            <Column>
-              <QuoteList
-                title="gamma"
-                listId="gamma"
-                listType="card"
-                isDropDisabled={disabledDroppable === "gamma"}
-                quotes={quoteMap.gamma}
-              />
-            </Column>
-            <Column>
-              <QuoteList
-                title="delta"
-                listId="delta"
-                listType="card"
-                isDropDisabled={disabledDroppable === "delta"}
-                quotes={quoteMap.delta}
-              />
-            </Column>
-            <Column>
-              <QuoteList
-                title="epsilon"
-                listId="epsilon"
-                listType="card"
-                isDropDisabled={disabledDroppable === "epsilon"}
-                quotes={quoteMap.epsilon}
-              />
-            </Column>
-            <Column>
-              <QuoteList
-                title="zeta"
-                listId="zeta"
-                listType="card"
-                isDropDisabled={disabledDroppable === "zeta"}
-                quotes={quoteMap.zeta}
-              />
-            </Column>
-            <Column>
-              <QuoteList
-                title="eta"
-                listId="eta"
-                listType="card"
-                isDropDisabled={disabledDroppable === "eta"}
-                quotes={quoteMap.eta}
-              />
-            </Column>
-            <Column>
-              <QuoteList
-                title="theta"
-                listId="theta"
-                listType="card"
-                isDropDisabled={disabledDroppable === "theta"}
-                quotes={quoteMap.theta}
-              />
-            </Column>
-            <Column>
-              <QuoteList
-                title="iota"
-                listId="iota"
-                listType="card"
-                isDropDisabled={disabledDroppable === "iota"}
-                quotes={quoteMap.iota}
-              />
-            </Column>
-          </HorizontalScrollContainer>
-        </Root>
+      <DragDropContext
+        onDragStart={this.onDragStart}
+        onDragUpdate={this.onDragUpdate}
+        onDragEnd={this.onDragEnd}
+      >
+        <Droppable
+          droppableId="all-columns"
+          direction="horizontal"
+          type="column"
+        >
+          {(provided) => (
+            <Container
+              {...provided.droppableProps}
+              innerRef={provided.innerRef}
+            >
+              {this.state.columnOrder.map((columnId, index) => {
+                const column = this.state.columns[columnId];
+                return (
+                  <InnerList
+                    key={column.id}
+                    column={column}
+                    taskMap={this.state.tasks}
+                    index={index}
+                  />
+                );
+              })}
+              {provided.placeholder}
+            </Container>
+          )}
+        </Droppable>
       </DragDropContext>
     );
   }
